@@ -1,6 +1,7 @@
 pragma solidity 0.4.23;
 
 import "./Recoverable.sol";
+import "./Multiownable.sol";
 import "../zeppelin/contracts/token/ERC20/ERC20Basic.sol";
 import "../zeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "../zeppelin/contracts/math/SafeMath.sol";
@@ -13,7 +14,7 @@ import "../zeppelin/contracts/math/SafeMath.sol";
  * @dev TokenVault is Recoverable, which also means it is Ownable and the owner
  * can reclaim any errant tokens or ether that is sent to the contract.
  */
-contract TokenVault is Recoverable {
+contract TokenVault is Recoverable, Multiownable {
   using SafeMath for uint256;
   using SafeERC20 for ERC20Basic;
 
@@ -110,6 +111,41 @@ contract TokenVault is Recoverable {
     token = _token;
     tokensToBeAllocated = _tokensToBeAllocated;
     vestingPeriod = _vestingPeriod;
+    _addMultiOwner(msg.sender);
+  }
+
+  /**
+   * @notice Authorize an additional account to set allocations.
+   * @dev Only the current contract owner can manage multi-owners.
+   */
+  function addMultiOwner(address _account) external onlyOwner {
+    _addMultiOwner(_account);
+  }
+
+  /**
+   * @notice Revoke an account's multi-owner authorization.
+   * @dev Only the current contract owner can manage multi-owners.
+   */
+  function removeMultiOwner(address _account) external onlyOwner {
+    _removeMultiOwner(_account);
+  }
+
+  /**
+   * @dev Keep multi-owner authorization consistent when ownership
+   * is accepted by a new owner.
+   */
+  function claimOwnership() public onlyPendingOwner {
+    address previousOwner = owner;
+
+    super.claimOwnership();
+
+    if (multiOwners[previousOwner]) {
+      _removeMultiOwner(previousOwner);
+    }
+
+    if (!multiOwners[owner]) {
+      _addMultiOwner(owner);
+    }
   }
 
   /**
@@ -125,7 +161,7 @@ contract TokenVault is Recoverable {
     uint256 _amount
   )
     external
-    onlyOwner
+    onlyMultiOwner
     vaultLoading
     returns(bool)
   {
